@@ -17,9 +17,9 @@
   // #define MENU_TIMEOUTMS 15000UL // After 15s of inactivity, revert to main screen
   // #define PUMP_TIMEOUTMS 30000UL // Stop pumps 30 seconds after heater off
   // #define BLOWER_PWM_TIMEOUTMS 15000UL // Stop blower 15 seconds after heater off
-  // #define WINTER_MODE_RUNTIMEMS 720000UL // run manual HVAC for 12 minutes max. (720000UL)
-  // #define STATIONARY_MODE_RUNTIMEMS 21600000UL // run stationary mode HVAC for 6h max. (21600000UL)
-  // #define SUMMER_MODE_RUNTIMEMS 120000UL // run summer HVAC for 2 minutes max. (120000UL)
+  // #define WINTER_MODE_RUNTIMEMS 720000UL // run manual mode for 12 minutes max. (720000UL)
+  // #define STATIONARY_MODE_RUNTIMEMS 21600000UL // run stationary mode for 6h max. (21600000UL)
+  // #define SUMMER_MODE_RUNTIMEMS 120000UL // run summer mode for 2 minutes max. (120000UL)
   // #define HEATER_BEEP_INTERVALMS 60000UL // beep every minute for heater on (60000UL)
   // #define WARNING_BEEP_INTERVALMS 23000UL // beep every 23 seconds for warnings (23000UL)
   // #define LOOP_REPORT_INTERVALMS 60000UL // report average loop performance every minute (60000UL)
@@ -31,9 +31,9 @@
   #define MENU_TIMEOUTMS 7500UL // After 15s of inactivity, revert to main screen
   #define PUMP_TIMEOUTMS 3000UL // Stop pumps 30 seconds after heater off
   #define BLOWER_PWM_TIMEOUTMS 6000UL // Stop blower 15 seconds after heater off
-  #define WINTER_MODE_RUNTIMEMS 15000UL // run manual HVAC for 12 minutes max. (720000UL)
-  #define STATIONARY_MODE_RUNTIMEMS 30000UL // run stationary mode HVAC for 6h max. (21600000UL)
-  #define SUMMER_MODE_RUNTIMEMS 5000UL // run summer HVAC for 2 minutes max. (120000UL)
+  #define WINTER_MODE_RUNTIMEMS 15000UL // run winter mode for 12 minutes max. (720000UL)
+  #define STATIONARY_MODE_RUNTIMEMS 30000UL // run stationary mode for 6h max. (21600000UL)
+  #define SUMMER_MODE_RUNTIMEMS 5000UL // run summer mode for 2 minutes max. (120000UL)
   #define HEATER_BEEP_INTERVALMS 2000UL // beep every minute for heater on (60000UL)
   #define WARNING_BEEP_INTERVALMS 3000UL // beep every 23 seconds for warnings (23000UL)
   #define LOOP_REPORT_INTERVALMS 10000UL // report average loop performance every minute (60000UL)
