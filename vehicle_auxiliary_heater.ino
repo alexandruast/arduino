@@ -590,7 +590,7 @@ float read_batt_voltage(int pin) {
 
 float read_temperature(int pin) {
   // int raw = analogRead(pin);
-  int raw = 5;
+  int raw = 124; // manually setting temperature for simulator to work without sensors
   float value = round((((raw * ANALOG_UNIT) - TEMP_CORRECTION) * 100) * 10.0);
   return value / 10.0;
 }
