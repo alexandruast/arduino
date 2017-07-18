@@ -1,8 +1,25 @@
 #include <math.h>
 #include <EEPROM.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <RtcDS1307.h>
+#include <TM1637Display.h>
+#include <LiquidCrystal_I2C.h>
+#include <Oregon.h>
 
-// ToDo: fuel consumption statistics
-// ToDo: stop if fuel consuption > 950 ml
+// https://github.com/Makuna/Rtc
+// https://github.com/avishorp/TM1637
+// https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
+// https://github.com/Mickaelh51/Arduino-Oregon-Library
+
+/* ToDo:
+    fuel consumption statistics
+    stop if fuel consuption > 950 ml
+    custom characters for lcd/blink (?)
+    433MHz remote actions
+    real time clock - schedules
+    lcd backlight 10 seconds timeout
+*/
 
 #define VOLTAGE 5.0
 #define TEMP_CORRECTION 0.5
