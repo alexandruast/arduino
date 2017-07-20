@@ -1,11 +1,11 @@
 #include <math.h>
 #include <EEPROM.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <RtcDS1307.h>
-#include <TM1637Display.h>
-#include <LiquidCrystal_I2C.h>
-#include <Oregon.h>
+// #include <Wire.h>
+// #include <SPI.h>
+// #include <RtcDS1307.h>
+// #include <TM1637Display.h>
+// #include <LiquidCrystal_I2C.h>
+// #include <Oregon.h>
 
 // https://github.com/Makuna/Rtc
 // https://github.com/avishorp/TM1637
@@ -14,7 +14,8 @@
 
 /* ToDo:
     fuel consumption statistics
-    stop if fuel consuption > 950 ml
+    monitor fp only if heater on
+    remove ignition from interrupt and use dpdt relay for blower
     custom characters for lcd/blink (?)
     433MHz remote actions
     real time clock - schedules
@@ -84,6 +85,7 @@
 #define TEMPERATURE_UNIT_INCREMENT 1
 
 #define FUEL_PULSE_ML 0.5
+#define FUEL_USAGE_MAX_ML 950.0
 
 #define BEEP_SILENCE_DURATIONMS 50 // silence between beeps on same request
 #define BEEP_LONG_DURATIONMS 500 // long beep duration
@@ -365,17 +367,17 @@ void loop() {
       if (engine_mode_on) {
         if (!p1_on) { pump1_turn_on(); }
         if (p2_on) { pump2_turn_off(); }
-        if (!heater_on) { heater_turn_on(); }
+        if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
       } else if (manual_mode_on || remote_mode_on) {
         if (!p1_on) { pump1_turn_on(); }
         if (p2_on) { pump2_turn_off(); }
-        if (!heater_on) { heater_turn_on(); }
+        if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
         if (!blower_on || blower_pwm != BLOWER_PWM_WINTER ) { blower_turn_on(BLOWER_PWM_WINTER); }
       } else if (stationary_mode_on) {
         if (p1_on) { pump1_turn_off(); }
         if (!cabin_temperature_reached) {
           if (!p2_on) { pump2_turn_on(); }
-          if (!heater_on) { heater_turn_on(); }
+          if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
           if (!blower_on || blower_pwm != BLOWER_PWM_CAMPING) { blower_turn_on(BLOWER_PWM_CAMPING); }
         } else {
           if (heater_on) { heater_turn_off(); }
@@ -436,6 +438,11 @@ void loop() {
     }
   }
 
+  // stop heater if max. fuel consumption value is reached
+  if (fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML && heater_on) {
+    heater_turn_off(); // blower stops automatically on timer
+    Serial.println("Heater stopped due to max fuel usage");
+  }
   // pumps will run for a while on heater stop even after off command
   if (!heater_on && (p1_on || p2_on) && loop_t - pump_t > PUMP_TIMEOUTMS) {
     if (p1_on) { pump1_turn_off(); }
@@ -529,6 +536,7 @@ void button1_long_press() {
             remote_mode_on = false;
             stationary_mode_on = false;
             manual_mode_t = loop_t;
+            fuel_consumption_run_ml = 0;
           }
           Serial.print("manual_mode_on:");
           Serial.println(manual_mode_on);
@@ -548,6 +556,7 @@ void button1_long_press() {
             manual_mode_on = false;
             remote_mode_on = false;
             stationary_mode_t = loop_t;
+            fuel_consumption_run_ml = 0;
           }
           Serial.print("stationary_mode_on:");
           Serial.println(stationary_mode_on);
@@ -622,6 +631,7 @@ void ignition_switch() {
   digitalRead(IGNSWITCH_PIN) == LOW ? ignswitch_on = true : ignswitch_on = false;
   Serial.print("Ignition switch:");
   Serial.println(ignswitch_on);
+  fuel_consumption_run_ml = 0;
   manual_mode_on = false;
   stationary_mode_on = false;
   remote_mode_on = false;
@@ -689,7 +699,6 @@ void heater_turn_on() {
   Serial.println("Heater turned on");
   heater_on = true;
   heater_t = loop_t;
-  fuel_consumption_run_ml = 0;
 }
 
 void heater_turn_off() {
