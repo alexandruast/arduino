@@ -12,6 +12,10 @@
 // https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
 // https://github.com/Mickaelh51/Arduino-Oregon-Library
 
+/*  2 x BTS7960B Motor Driver: use +5V on R_EN and L_EN pins
+    Drive using RPWM or LPWM, check which one works
+*/
+
 /* ToDo:
     fuel consumption statistics
     monitor fp only if heater on
