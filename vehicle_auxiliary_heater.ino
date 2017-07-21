@@ -114,6 +114,9 @@
 #define FUEL_PULSE_ML 0.5
 #define FUEL_USAGE_MAX_ML 950.0
 
+#define SEG7_BRIGHTNESS_LOW 40
+#define SEG7_BRIGHTNESS_HIGH 90
+
 #define BEEP_SILENCE_DURATIONMS 50 // silence between beeps on same request
 #define BEEP_LONG_DURATIONMS 500 // long beep duration
 #define BEEP_SHORT_DURATIONMS 50 // short beep duration
@@ -129,8 +132,8 @@
 #define CHARGING_MIN_VOLTAGE 13.5
 #define CHARGING_MAX_VOLTAGE 14.5
 
-volatile bool ignition_switch_active = false;
 volatile bool fpfeed_on = false;
+bool ignition_switch_active = false;
 bool engine_running = false;
 
 bool button1_active = false;
@@ -162,8 +165,7 @@ bool p2_on = false;
 const byte screens = 4;
 byte current_screen = 1;
 
-byte seg7_brightness = 0;
-char seg7_text[4];
+byte seg7_brightness = SEG7_BRIGHTNESS_LOW;
 
 unsigned int beep_duration = 0;
 unsigned int beep_freq = 0;
@@ -223,7 +225,7 @@ void setup() {
   pinMode(BLOWER_PWM_PIN, OUTPUT);
 
   seg7_init();
-  seg7_print("Hello");
+  seg7_set_brightness(seg7_brightness);
 
   attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch, CHANGE);
 
@@ -269,9 +271,6 @@ void setup() {
 void loop() {
   // start a timer at loop start
   loop_t = millis();
-
-  // 7segment display
-
 
   // ignition switch actions
   if ((ignition_switch_on() && !ignition_switch_active) || (!ignition_switch_on() && ignition_switch_active)) {
@@ -397,6 +396,7 @@ void loop() {
   }
 
   if (system_on) {
+    if (seg7_brightness != SEG7_BRIGHTNESS_HIGH) { seg7_set_brightness(SEG7_BRIGHTNESS_HIGH); }
     // when temperature changes, re-evaluate conditions
     if (cabin_temperature_input_changed) {
       if (winter_on) {
@@ -495,6 +495,8 @@ void loop() {
   if (!heater_on && (p1_on || p2_on) && loop_t - pump_t > PUMP_TIMEOUTMS) {
     if (p1_on) { pump1_turn_off(); }
     if (p2_on) { pump2_turn_off(); }
+  } else {
+    if (seg7_brightness != SEG7_BRIGHTNESS_LOW) { seg7_set_brightness(SEG7_BRIGHTNESS_LOW); }
   }
 
   // stop heater if engine mode is off
@@ -807,11 +809,12 @@ void beep_turn_off() {
 
 void seg7_init() {
   // seg7_display.begin();
-  Serial.print("7seg initialized ");
+  Serial.println("7seg initialized");
 }
 
 void seg7_set_brightness(byte value) {
   // seg7_display.setBacklight(100);
+  seg7_brightness = value;
   Serial.print("7seg brightness set to ");
   Serial.println(value);
 }
