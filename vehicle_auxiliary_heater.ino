@@ -1,15 +1,17 @@
 #include <math.h>
 #include <EEPROM.h>
+#include <inttypes.h>
+#include <string.h>
 // #include <Wire.h>
 // #include <SPI.h>
 // #include <RtcDS1307.h>
-// #include <TM1637Display.h>
+// #include <SevenSegmentTM1637.h>
 // #include <LiquidCrystal_I2C.h>
 // #include <Oregon.h>
 // #include <RCSwitch.h>
 
 // https://github.com/Makuna/Rtc
-// https://github.com/avishorp/TM1637
+// https://github.com/bremme/arduino-tm1637
 // https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
 // https://github.com/Mickaelh51/Arduino-Oregon-Library
 // https://github.com/sui77/rc-switch
@@ -30,18 +32,15 @@
     lcd backlight 10 seconds timeout
 */
 
-
 #define FPFEED_PIN 2 // heater fuel pump feedback pin (interrupt)
 #define R433MHZ_PIN 3 // 433MHz receiver pin (interrupt)
 #define BUTTON1_PIN 4 // main button
 #define BUZZER_PIN 5 // buzzer
-#define TM1637_CLK 6 // 4x7segment led display
-#define TM1637_DIO 7 // 4x7segment led display
+#define TM1637_CLK_PIN 6 // 4x7segment led display
+#define TM1637_DIO_PIN 7 // 4x7segment led display
 #define IGNSWITCH_PIN 8 // ignition switch on
 #define BLOWER_PWM_PIN 9 // blower pwm module pin
 #define TEMPERATURE_PIN 10 // temperature sensors
-
-
 
 #define VOLTAGE_PIN A0 // voltage monitoring pin
 #define HEATER_PIN A1 // heater command pin
@@ -163,6 +162,9 @@ bool p2_on = false;
 const byte screens = 4;
 byte current_screen = 1;
 
+byte seg7_brightness = 0;
+char seg7_text[4];
+
 unsigned int beep_duration = 0;
 unsigned int beep_freq = 0;
 byte beep_times = 0;
@@ -187,6 +189,8 @@ const float VOLTAGE_DIVIDER = R2/(R1+R2);
 float batt_voltage = BATT_MAX_VOLTAGE; // assume battery is charged
 float cabin_temperature = SETUP_MODE_CABIN_TEMPERATURE_MAX; // assume internal temperature is reached
 byte blower_pwm = 0; // assume blower pwm is zero
+
+// SevenSegmentTM1637 seg7_display(TM1637_CLK_PIN, TM1637_DIO_PIN);
 
 void setup() {
 
@@ -217,6 +221,9 @@ void setup() {
   pinMode(HEATER_PIN, OUTPUT);
 
   pinMode(BLOWER_PWM_PIN, OUTPUT);
+
+  seg7_init();
+  seg7_print("Hello");
 
   attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch, CHANGE);
 
@@ -262,6 +269,9 @@ void setup() {
 void loop() {
   // start a timer at loop start
   loop_t = millis();
+
+  // 7segment display
+
 
   // ignition switch actions
   if ((ignition_switch_on() && !ignition_switch_active) || (!ignition_switch_on() && ignition_switch_active)) {
@@ -741,7 +751,7 @@ void heater_turn_off() {
 void blower_turn_on(byte pwm) {
   digitalWrite(BLOWER_PWM_PIN, pwm);
   Serial.print("Blower turned on:");
-  Serial.println(pwm_val);
+  Serial.println(pwm);
   blower_on = true;
   blower_pwm = pwm;
 }
@@ -793,4 +803,19 @@ void beep_turn_off() {
   noTone(BUZZER_PIN);
   beep_on = false;
   beep_silence_t = loop_t;
+}
+
+void seg7_init() {
+  // seg7_display.begin();
+  Serial.print("7seg initialized ");
+}
+
+void seg7_set_brightness(byte value) {
+  // seg7_display.setBacklight(100);
+  Serial.print("7seg brightness set to ");
+  Serial.println(value);
+}
+
+void seg7_print(char* text) {
+  Serial.println(text);
 }
