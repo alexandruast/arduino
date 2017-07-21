@@ -6,11 +6,15 @@
 // #include <TM1637Display.h>
 // #include <LiquidCrystal_I2C.h>
 // #include <Oregon.h>
+// #include <RCSwitch.h>
 
 // https://github.com/Makuna/Rtc
 // https://github.com/avishorp/TM1637
 // https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
 // https://github.com/Mickaelh51/Arduino-Oregon-Library
+// https://github.com/sui77/rc-switch
+
+//http://www.princetronics.com/how-to-read-433-mhz-codes-w-arduino-433-mhz-receiver/
 
 /*  2 x BTS7960B Motor Driver: use +5V on R_EN and L_EN pins
     Drive using RPWM or LPWM, check which one works
@@ -25,6 +29,26 @@
     real time clock - schedules
     lcd backlight 10 seconds timeout
 */
+
+
+#define FPFEED_PIN 2 // heater fuel pump feedback pin (interrupt)
+#define R433MHZ_PIN 3 // 433MHz receiver pin (interrupt)
+#define BUTTON1_PIN 4 // main button
+#define BUZZER_PIN 5 // buzzer
+#define TM1637_CLK 6 // 4x7segment led display
+#define TM1637_DIO 7 // 4x7segment led display
+#define IGNSWITCH_PIN 8 // ignition switch on
+#define BLOWER_PWM_PIN 9 // blower pwm module pin
+#define TEMPERATURE_PIN 10 // temperature sensors
+
+
+
+#define VOLTAGE_PIN A0 // voltage monitoring pin
+#define HEATER_PIN A1 // heater command pin
+#define PUMP1_PIN A2 // pump1 command pin
+#define PUMP2_PIN A3 // pump2 command pin
+#define SDA_PIN A4 // serial devices - rtc, i2c display
+#define SCL_PIN A5 // serial devices - rtc, i2c display
 
 #define VOLTAGE 5.0
 #define TEMP_CORRECTION 0.5
@@ -67,9 +91,9 @@
   #define LOOP_REPORT_INTERVALMS 10000UL // report average loop performance every minute (60000UL)
 // End production board settings
 
-#define BLOWER_PWM_WINTER 35 // in winter, run at 35%
-#define BLOWER_PWM_CAMPING 15 // in stationary mode, run at minimum
-#define BLOWER_PWM_SUMMER 60 // in summer, run at 60%
+#define BLOWER_PWM_WINTER 63 // in winter, run at 25% (100% = 255)
+#define BLOWER_PWM_CAMPING 31 // in stationary mode, run at 16% (100% = 255)
+#define BLOWER_PWM_SUMMER 127 // in summer, run at 50% (100% = 255)
 
 /* Seasons: 1 - Auto, 2 - Summer, 3 - Winter
    stationary mode is disabled in summer
@@ -101,30 +125,12 @@
 #define BEEP_FREQ_OK 440
 #define BEEP_FREQ_NOK 880
 
-
-#define IGNSWITCH_PIN 2 // ignition switch on (interrupt)
-#define FPFEED_PIN 3 // heater fuel pump feedback pin (interrupt)
-#define BUTTON1_PIN 4 // main button
-#define BUZZER_PIN 5 // buzzer
-#define TM1637_CLK 6 // 4x7segment led display
-#define TM1637_DIO 7 // 4x7segment led display
-#define TEMPERATURE_PIN 8 // temperature sensors
-#define BLOWER_PWM_PIN 9 // blower pwm module pin
-#define R433_PIN 10 // 433 Mhz receiver pin
-
-#define VOLTAGE_PIN A0 // voltage monitoring pin
-#define HEATER_PIN A1 // heater command pin
-#define PUMP1_PIN A2 // pump1 command pin
-#define PUMP2_PIN A3 // pump2 command pin
-#define SDA_PIN A4 // serial devices - rtc, i2c display
-#define SCL_PIN A5 // serial devices - rtc, i2c display
-
 #define BATT_MIN_VOLTAGE 12.0
 #define BATT_MAX_VOLTAGE 12.8
 #define CHARGING_MIN_VOLTAGE 13.5
 #define CHARGING_MAX_VOLTAGE 14.5
 
-volatile bool ignswitch_on = false;
+volatile bool ignition_switch_active = false;
 volatile bool fpfeed_on = false;
 bool engine_running = false;
 
@@ -210,11 +216,8 @@ void setup() {
   digitalWrite(HEATER_PIN, HIGH);
   pinMode(HEATER_PIN, OUTPUT);
 
-  digitalWrite(BLOWER_PWM_PIN, HIGH);
   pinMode(BLOWER_PWM_PIN, OUTPUT);
 
-
-  attachInterrupt(digitalPinToInterrupt(IGNSWITCH_PIN), ignition_switch, CHANGE);
   attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch, CHANGE);
 
   // set variables to default
@@ -252,9 +255,6 @@ void setup() {
   (eeprom_byte < 100) ? winter_on = false : winter_on = true;
   expected_cabin_temperature = eeprom_byte % 100;
 
-  // get ignition switch status
-  ignition_switch();
-
   // system start confirmation beep
   beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
 }
@@ -262,6 +262,39 @@ void setup() {
 void loop() {
   // start a timer at loop start
   loop_t = millis();
+
+  // ignition switch actions
+  if ((ignition_switch_on() && !ignition_switch_active) || (!ignition_switch_on() && ignition_switch_active)) {
+    if (blower_on) { blower_turn_off(); }
+    if (heater_on) { heater_turn_off(); }
+    ignition_switch_active = !ignition_switch_active;
+    Serial.print("Ignition switch:");
+    Serial.println(ignition_switch_active);
+    batt_voltage_input_changed = true;
+    current_screen = 1;
+  }
+
+  // set current working mode
+  if (manual_mode_on) {
+    stationary_mode_on = false;
+    remote_mode_on = false;
+    engine_mode_on = false;
+  }
+  if (stationary_mode_on) {
+    manual_mode_on = false;
+    remote_mode_on = false;
+    engine_mode_on = false;
+  }
+  if (remote_mode_on) {
+    manual_mode_on = false;
+    stationary_mode_on = false;
+    engine_mode_on = false;
+  }
+  if (engine_mode_on) {
+    manual_mode_on = false;
+    stationary_mode_on = false;
+    remote_mode_on = false;
+  }
 
   // sensor bank1 polling
   if (loop_t - sensors_bank1_t > POLLINGMS1) {
@@ -338,18 +371,16 @@ void loop() {
   }
 
   if (batt_voltage_input_changed) {
-    if (batt_voltage > CHARGING_MIN_VOLTAGE && ignswitch_on) {
+    if (batt_voltage > CHARGING_MIN_VOLTAGE && ignition_switch_active) {
       if (!engine_running) {
         Serial.println("Engine is running");
         engine_running = true;
-        engine_mode_on = true;
         engine_t = loop_t;
       }
     } else {
       if (engine_running) {
         Serial.println("Engine is stopped");
         engine_running = false;
-        engine_mode_on = false;
       }
     }
     batt_voltage_input_changed = false;
@@ -366,8 +397,11 @@ void loop() {
       cabin_temperature_input_changed = false;
     }
 
-    if (winter_on) {
-    // winter is here
+    if (winter_on) { // winter is here
+      if (engine_running && !engine_mode_on) {
+        engine_mode_on = true;
+        fuel_consumption_run_ml = 0;
+      }
       if (engine_mode_on) {
         if (!p1_on) { pump1_turn_on(); }
         if (p2_on) { pump2_turn_off(); }
@@ -453,6 +487,11 @@ void loop() {
     if (p2_on) { pump2_turn_off(); }
   }
 
+  // stop heater if engine mode is off
+  if (!engine_running && engine_mode_on) {
+    engine_mode_on = false;
+  }
+
   // manage beeps
   if (beep_times > 0) { // request for beep
     if (!beep_on) { // we do not have beep_on if silence period
@@ -530,15 +569,13 @@ void button1_long_press() {
         if (engine_running && engine_mode_on) {
           beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
           engine_mode_on = false;
-        } else if (!engine_running && !ignswitch_on) {
+        } else if (!engine_running && !ignition_switch_active) {
           if (manual_mode_on) {
             beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
             manual_mode_on = false;
           } else {
             beep_action(BEEP_SET_DURATIONMS, BEEP_SET_TIMES, BEEP_FREQ_OK);
             manual_mode_on = true;
-            remote_mode_on = false;
-            stationary_mode_on = false;
             manual_mode_t = loop_t;
             fuel_consumption_run_ml = 0;
           }
@@ -550,15 +587,13 @@ void button1_long_press() {
         setup_mode = false;
         break;
       case 2:
-        if (!engine_running && !ignswitch_on) {
+        if (!engine_running && !ignition_switch_active) {
           if (stationary_mode_on) {
             beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
             stationary_mode_on = false;
           } else {
             beep_action(BEEP_SET_DURATIONMS, BEEP_SET_TIMES, BEEP_FREQ_OK);
             stationary_mode_on = true;
-            manual_mode_on = false;
-            remote_mode_on = false;
             stationary_mode_t = loop_t;
             fuel_consumption_run_ml = 0;
           }
@@ -629,18 +664,8 @@ void fpfeed_switch() {
   }
 }
 
-void ignition_switch() {
-  if (blower_on) { blower_turn_off(); }
-  if (heater_on) { heater_turn_off(); }
-  digitalRead(IGNSWITCH_PIN) == LOW ? ignswitch_on = true : ignswitch_on = false;
-  Serial.print("Ignition switch:");
-  Serial.println(ignswitch_on);
-  fuel_consumption_run_ml = 0;
-  manual_mode_on = false;
-  stationary_mode_on = false;
-  remote_mode_on = false;
-  batt_voltage_input_changed = true;
-  current_screen = 1;
+bool ignition_switch_on() {
+  return !digitalRead(IGNSWITCH_PIN);
 }
 
 bool button1_pressed() {
@@ -713,17 +738,16 @@ void heater_turn_off() {
   heater_on = false;
 }
 
-void blower_turn_on(int power) {
-  // digitalWrite(BLOWER_PWM_PIN, power);
-  digitalWrite(BLOWER_PWM_PIN, LOW);
+void blower_turn_on(byte pwm) {
+  digitalWrite(BLOWER_PWM_PIN, pwm);
   Serial.print("Blower turned on:");
-  Serial.println(power);
+  Serial.println(pwm_val);
   blower_on = true;
-  blower_pwm = power;
+  blower_pwm = pwm;
 }
 
 void blower_turn_off() {
-  digitalWrite(BLOWER_PWM_PIN, HIGH);
+  digitalWrite(BLOWER_PWM_PIN, 0);
   Serial.println("Blower turned off");
   blower_on = false;
   blower_pwm = 0;
