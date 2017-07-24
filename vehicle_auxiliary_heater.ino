@@ -25,11 +25,9 @@
 /* ToDo:
     fuel consumption statistics
     monitor fp only if heater on
-    custom characters for lcd/blink (?)
     433MHz remote actions
     real time clock - schedules
     lcd backlight 10 seconds timeout
-    interrupt on everything that can work this way - ign, buttons
 */
 
 #define FPFEED_PIN 2 // heater fuel pump feedback pin (interrupt)
