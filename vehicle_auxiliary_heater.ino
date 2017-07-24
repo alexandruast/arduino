@@ -5,7 +5,7 @@
 // #include <Wire.h>
 // #include <SPI.h>
 // #include <RtcDS1307.h>
-// #include <SevenSegmentTM1637.h>
+#include <SevenSegmentTM1637.h>
 // #include <LiquidCrystal_I2C.h>
 // #include <Oregon.h>
 // #include <RCSwitch.h>
@@ -49,43 +49,6 @@
 #define SDA_PIN A4 // serial devices - rtc, i2c display
 #define SCL_PIN A5 // serial devices - rtc, i2c display
 
-#define TM1637_I2C_COMM1 0x40
-#define TM1637_I2C_COMM2 0xC0
-#define TM1637_I2C_COMM3 0x80
-
-#define SEG_A 0b00000001
-#define SEG_B 0b00000010
-#define SEG_C 0b00000100
-#define SEG_D 0b00001000
-#define SEG_E 0b00010000
-#define SEG_F 0b00100000
-#define SEG_G 0b01000000
-
-const uint8_t SEG7_0 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
-const uint8_t SEG7_1 = SEG_B | SEG_C;
-const uint8_t SEG7_2 = SEG_A | SEG_B | SEG_D | SEG_E | SEG_G;
-const uint8_t SEG7_3 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_G;
-const uint8_t SEG7_4 = SEG_B | SEG_C | SEG_F | SEG_G;
-const uint8_t SEG7_5 = SEG_A | SEG_C | SEG_D | SEG_F | SEG_G;
-const uint8_t SEG7_6 = SEG_A | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_7 = SEG_A | SEG_B | SEG_C;
-const uint8_t SEG7_8 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_9 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_G;
-const uint8_t SEG7_A = SEG_A | SEG_B | SEG_C | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_b = SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_C = SEG_A | SEG_D | SEG_E | SEG_F;
-const uint8_t SEG7_d = SEG_B | SEG_C | SEG_D | SEG_E | SEG_G;
-const uint8_t SEG7_E = SEG_A | SEG_D | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_F = SEG_A | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_H = SEG_B | SEG_C | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_L = SEG_D | SEG_E | SEG_F;
-const uint8_t SEG7_n = SEG_C | SEG_E | SEG_G;
-const uint8_t SEG7_o = SEG_C | SEG_D | SEG_E | SEG_G;
-const uint8_t SEG7_P = SEG_A | SEG_B | SEG_E | SEG_F | SEG_G;
-const uint8_t SEG7_U = SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
-const uint8_t SEG7_deg = SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
-const uint8_t SEG7_empty = 0x00;
-
 #define VOLTAGE 5.0
 #define TEMP_CORRECTION 0.5
 #define R1 30000.0
@@ -93,39 +56,21 @@ const uint8_t SEG7_empty = 0x00;
 
 #define BUTTON_SHORTMS 15UL // minimum time for a button to be registered
 #define BUTTON_LONGMS 500UL // long button press (at least 0.5 seconds)
-#define BUTTON_POWERMS 1000UL // Power on/off (at least 2 seconds)
-#define BUTTON_MFMS 5000UL // button malfunction
-
-// Production board settings
-  // #define POLLINGMS1 10000UL // sensor bank1 polling time (10 seconds)
-  // #define POLLINGMS2 3600000UL // sensor bank2 polling time (60 minutes)
-  // #define MENU_TIMEOUTMS 15000UL // After 15s of inactivity, revert to main screen
-  // #define PUMP_TIMEOUTMS 30000UL // Stop pumps 30 seconds after heater off
-  // #define BLOWER_PWM_TIMEOUTMS 15000UL // Stop blower 15 seconds after heater off
-  // #define WINTER_MODE_RUNTIMEMS 720000UL // run manual mode for 12 minutes max. (720000UL)
-  // #define STATIONARY_MODE_RUNTIMEMS 21600000UL // run stationary mode for 6h max. (21600000UL)
-  // #define SUMMER_MODE_RUNTIMEMS 120000UL // run summer mode for 2 minutes max. (120000UL)
-  // #define HEATER_BEEP_INTERVALMS 60000UL // beep every minute for heater on (60000UL)
- // #define FPFEED_TIMEOUTMS 1000UL // burner is off is fuel pump is off for at least one second
-  // #define WARNING_BEEP_INTERVALMS 23000UL // beep every 23 seconds for warnings (23000UL)
-  // #define LOOP_REPORT_INTERVALMS 60000UL // report average loop performance every minute (60000UL)
-// End production board settings
-
-// Prototype/simulator board settings
-  #define POLLINGMS1 1000UL // sensor bank1 polling time (10 seconds)
-  #define POLLINGMS2 2000UL // sensor bank2 polling time (60 minutes)
-  #define MENU_TIMEOUTMS 7500UL // After 15s of inactivity, revert to main screen
-  #define PUMP_TIMEOUTMS 3000UL // Stop pumps 30 seconds after heater off
-  #define BLOWER_PWM_TIMEOUTMS 6000UL // Stop blower 15 seconds after heater off
-  #define WINTER_MODE_RUNTIMEMS 15000UL // run manual winter mode for 12 minutes max. (720000UL)
-  #define STATIONARY_MODE_RUNTIMEMS 30000UL // run stationary mode for 6h max. (21600000UL)
-  #define REMOTE_MODE_RUNTIMEMS 10000UL // run remote mode for 6 minutes max. (360000UL)
-  #define SUMMER_MODE_RUNTIMEMS 5000UL // run manual summer mode for 2 minutes max. (120000UL)
-  #define HEATER_BEEP_INTERVALMS 2000UL // beep every minute for heater on (60000UL)
-  #define FPFEED_TIMEOUTMS 1000UL // burner is off is fuel pump is off for at least one second
-  #define WARNING_BEEP_INTERVALMS 3000UL // beep every 23 seconds for warnings (23000UL)
-  #define LOOP_REPORT_INTERVALMS 1000UL // report average loop performance every minute (60000UL)
-// End production board settings
+#define BUTTON_POWERMS 5000UL // Power on/off (at least 5 seconds)
+#define BUTTON_MFMS 10000UL // button malfunction
+#define POLLINGMS1 10000UL // sensor bank1 polling time (10 seconds)
+#define POLLINGMS2 3600000UL // sensor bank2 polling time (60 minutes)
+#define MENU_TIMEOUTMS 7500UL // After 7.5s of inactivity, revert to main screen
+#define PUMP_TIMEOUTMS 30000UL // Stop pumps 30 seconds after heater off
+#define BLOWER_PWM_TIMEOUTMS 15000UL // Stop blower 15 seconds after heater off
+#define WINTER_MODE_RUNTIMEMS 720000UL // run manual mode for 12 minutes max. (720000UL)
+#define STATIONARY_MODE_RUNTIMEMS 21600000UL // run stationary mode for 6h max. (21600000UL)
+#define REMOTE_MODE_RUNTIMEMS 360000UL // run remote mode for 6 minutes max. (360000UL)
+#define SUMMER_MODE_RUNTIMEMS 120000UL // run summer mode for 2 minutes max. (120000UL)
+#define HEATER_BEEP_INTERVALMS 60000UL // beep every minute for heater on (60000UL)
+#define FPFEED_TIMEOUTMS 1000UL // burner is off is fuel pump is off for at least one second
+#define WARNING_BEEP_INTERVALMS 23000UL // beep every 23 seconds for warnings (23000UL)
+#define LOOP_REPORT_INTERVALMS 60000UL // report average loop performance every minute (60000UL)
 
 #define BLOWER_PWM_WINTER 63 // in winter, run at 25% (100% = 255)
 #define BLOWER_PWM_CAMPING 31 // in stationary mode, run at 16% (100% = 255)
@@ -151,8 +96,9 @@ const uint8_t SEG7_empty = 0x00;
 #define FUEL_PULSE_ML 0.5
 #define FUEL_USAGE_MAX_ML 950.0
 
-#define SEG7_BRIGHTNESS_LOW 40
-#define SEG7_BRIGHTNESS_HIGH 90
+#define SEG7_BRIGHTNESS_LOW 30
+#define SEG7_BRIGHTNESS_HIGH 100
+#define SEG7_COLON_BLINKMS 750UL
 
 #define BEEP_SILENCE_DURATIONMS 50 // silence between beeps on same request
 #define BEEP_LONG_DURATIONMS 500 // long beep duration
@@ -177,6 +123,8 @@ bool button1_active = false;
 bool setup_mode = false;
 bool beep_on = false;
 bool warning_on = false;
+bool seg7_colon = false;
+bool seg7_display_on = true;
 
 bool batt_voltage_input_changed = false;
 bool cabin_temperature_input_changed = true;
@@ -195,8 +143,9 @@ bool p1_on = false;
 bool p2_on = false;
 
 /* screens
-   1 - batt_voltage and status
-   2 - heater
+   0 - batt_voltage and status
+   1 - running mode
+   2 - stationary mode
    3 - temperature
    4 - season
 */
@@ -204,7 +153,7 @@ const byte screens = 4;
 byte current_screen = 0;
 
 byte seg7_brightness = 0;
-char seg7_text[6] = { '8', '8', '8', '8', ':', '\0' };
+String seg7_text = "8888";
 
 unsigned int beep_duration = 0;
 unsigned int beep_freq = 0;
@@ -217,7 +166,7 @@ unsigned int fuel_consumption_total_ml = 0;
 unsigned long loop_times, millis_t, boot_t, loop_t, loop_report_t, system_warning_t;
 unsigned long sensors_bank1_t, sensors_bank2_t, button1_t, button1_td, menu_t;
 unsigned long heater_t, fpfeed_t, pump_t, blower_t, manual_mode_t, engine_t, stationary_mode_t, remote_mode_t;
-unsigned long beep_t, beep_silence_t, heater_beep_t;
+unsigned long beep_t, beep_silence_t, heater_beep_t, seg7_colon_t;
 
 byte expected_cabin_temperature, setup_mode_cabin_temperature;
 bool setup_mode_winter_on = false;
@@ -232,7 +181,7 @@ float batt_voltage = BATT_MAX_VOLTAGE; // assume battery is charged
 float cabin_temperature = SETUP_MODE_CABIN_TEMPERATURE_MAX; // assume internal temperature is reached
 byte blower_pwm = 0; // assume blower pwm is zero
 
-// SevenSegmentTM1637 seg7_display(TM1637_CLK_PIN, TM1637_DIO_PIN);
+SevenSegmentTM1637 seg7_display(TM1637_CLK_PIN, TM1637_DIO_PIN);
 
 void setup() {
 
@@ -285,6 +234,7 @@ void setup() {
 
   millis_t = millis();
 
+  seg7_colon_t = millis_t; // timer for periodic blink
   beep_t = millis_t; // timer for beep duration
   beep_silence_t = millis_t; // timer for silence duration
   loop_t = millis_t; // timer for loop
@@ -306,6 +256,7 @@ void setup() {
   beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
 
   // initialization
+  seg7_display_init();
   read_sensors_bank1();
   current_screen = 0;
   batt_voltage_input_changed = true;
@@ -337,7 +288,7 @@ void loop() {
     }
   }
 
-  if (warning_on && loop_t - system_warning_t > WARNING_BEEP_INTERVALMS) {
+  if (warning_on && loop_t - system_warning_t > WARNING_BEEP_INTERVALMS && current_screen == 0) {
     beep_action(BEEP_SHORT_DURATIONMS, BEEP_WARNING_TIMES, BEEP_FREQ_NOK);
     system_warning_t = loop_t;
   }
@@ -346,7 +297,7 @@ void loop() {
   if (loop_t - menu_t > MENU_TIMEOUTMS) {
     if (current_screen != 0) {
       current_screen = 0;
-      seg7_set_voltage(batt_voltage);
+      seg7_display_voltage();
       setup_mode = false;
     }
   }
@@ -365,7 +316,7 @@ void loop() {
       }
     }
     if (current_screen == 0) {
-      seg7_set_voltage(batt_voltage);
+      seg7_display_voltage();
     }
     batt_voltage_input_changed = false;
   }
@@ -395,15 +346,20 @@ void loop() {
     button1_td = 0UL;
   }
 
-  // 7segment display
-  if (manual_mode_on || remote_mode_on || stationary_mode_on || engine_mode_on) {
-    // blink something here?
+  // 7segment display colon blink
+  if ((manual_mode_on || remote_mode_on || stationary_mode_on || engine_mode_on) && current_screen == 0) {
+    if (loop_t - seg7_colon_t > SEG7_COLON_BLINKMS) {
+      seg7_colon = !seg7_colon;
+      seg7_display_colon(seg7_colon);
+      seg7_display_text(seg7_text);
+      seg7_colon_t = loop_t;
+    }
   }
 
   if (system_on) {
-    if (seg7_brightness != SEG7_BRIGHTNESS_HIGH) {
+    if (seg7_brightness != SEG7_BRIGHTNESS_HIGH && beep_times == 0) {
       seg7_brightness = SEG7_BRIGHTNESS_HIGH;
-      seg7_set_brightness(seg7_brightness);
+      seg7_display_brightness(seg7_brightness);
     }
     // when temperature changes, re-evaluate conditions
     if (cabin_temperature_input_changed) {
@@ -497,7 +453,7 @@ void loop() {
        we could get rid of heater_beep_t use heater_t % HEATER_BEEP_INTERVALMS == 0,
        but we might miss the event and managing this is additionally expensive
     */
-    if (heater_on && loop_t - heater_t > HEATER_BEEP_INTERVALMS && loop_t - heater_beep_t > HEATER_BEEP_INTERVALMS) {
+    if (heater_on && loop_t - heater_t > HEATER_BEEP_INTERVALMS && loop_t - heater_beep_t > HEATER_BEEP_INTERVALMS && current_screen == 0) {
       beep_action(BEEP_SHORT_DURATIONMS, 2, BEEP_FREQ_OK);
       heater_beep_t = loop_t;
     }
@@ -514,9 +470,9 @@ void loop() {
 
   } else {
     // system is off
-    if (seg7_brightness != SEG7_BRIGHTNESS_LOW) {
+    if (seg7_brightness != SEG7_BRIGHTNESS_LOW && beep_times == 0) {
       seg7_brightness = SEG7_BRIGHTNESS_LOW;
-      seg7_set_brightness(seg7_brightness);
+      seg7_display_brightness(seg7_brightness);
     }
   }
 
@@ -525,10 +481,21 @@ void loop() {
     if (!beep_on) { // we do not have beep_on if silence period
       if (loop_t - beep_silence_t > BEEP_SILENCE_DURATIONMS) { // are we not on silence period?
         beep_turn_on();
+        if (!seg7_display_on) {
+          seg7_brightness = (system_on ? SEG7_BRIGHTNESS_HIGH : SEG7_BRIGHTNESS_LOW);
+          seg7_display_brightness(seg7_brightness);
+          seg7_display_on = true;
+        }
       }
     } else { // we have beep_on
       if (loop_t - beep_t > beep_duration) { // beep timer reached
         beep_turn_off();
+        if (seg7_display_on) {
+          seg7_brightness = 0;
+          seg7_display_brightness(seg7_brightness);
+          seg7_display_on = false;
+
+        }
         beep_times--;
       }
     }
@@ -550,7 +517,7 @@ void loop() {
 void button1_short_press() {
   if (!setup_mode) {
     if (current_screen == screens) {
-      current_screen = 0;
+      current_screen = 1;
       beep_action(BEEP_SHORT_DURATIONMS, 2, BEEP_FREQ_OK);
     } else {
       current_screen ++;
@@ -560,18 +527,18 @@ void button1_short_press() {
     Serial.println(current_screen);
     switch (current_screen) {
       case 0:
-          seg7_set_voltage(batt_voltage);
+          seg7_display_voltage();
       case 1:
-          seg7_set_running();
+          seg7_display_runmode();
         break;
       case 2:
-          seg7_set_stationary(stationary_mode_on);
+          seg7_display_stationary();
         break;
       case 3:
-          seg7_set_temperature(cabin_temperature);
+          seg7_display_temperature(cabin_temperature);
         break;
       case 4:
-          seg7_set_season(winter_on);
+          seg7_display_season(winter_on);
         break;
     }
   } else {
@@ -588,6 +555,7 @@ void button1_short_press() {
         }
         Serial.print("setup_mode_cabin_temperature: ");
         Serial.println(setup_mode_cabin_temperature);
+        seg7_display_temperature(setup_mode_cabin_temperature);
         break;
       case 4:
         // switch between summer and winter modes
@@ -600,6 +568,7 @@ void button1_short_press() {
         }
         Serial.print("setup_mode_winter_on: ");
         Serial.println(setup_mode_winter_on);
+        seg7_display_season(setup_mode_winter_on);
         break;
     }
   }
@@ -611,11 +580,15 @@ void button1_long_press() {
     switch (current_screen) {
       case 0:
         beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
+        setup_mode = false;
         break;
       case 1:
         if (engine_running && engine_mode_on) {
           beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
           engine_mode_on = false;
+        } else if (stationary_mode_on) {
+          beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
+          stationary_mode_on = false;
         } else if (!engine_running && !ignition_switch_active) {
           if (manual_mode_on) {
             beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
@@ -635,6 +608,7 @@ void button1_long_press() {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
         }
         setup_mode = false;
+        seg7_display_runmode();
         break;
       case 2:
         if (!engine_running && !ignition_switch_active) {
@@ -656,11 +630,13 @@ void button1_long_press() {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
         }
         setup_mode = false;
+        seg7_display_stationary();
         break;
       case 3:
         beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
         Serial.println("Setup mode for temperature");
         setup_mode_cabin_temperature = expected_cabin_temperature;
+        seg7_display_temperature(expected_cabin_temperature);
         break;
       case 4:
         beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
@@ -684,6 +660,7 @@ void button1_long_press() {
         Serial.print("Exiting setup mode for screen: ");
         Serial.println(current_screen);
         setup_mode = false;
+        seg7_display_temperature(expected_cabin_temperature);
         // do not exit to main screen, wait for timeout
         break;
       case 4:
@@ -700,6 +677,11 @@ void button1_long_press() {
         Serial.print("Exiting setup mode for screen: ");
         Serial.println(current_screen);
         setup_mode = false;
+        manual_mode_on = false;
+        stationary_mode_on = false;
+        engine_mode_on = false;
+        remote_mode_on = false;
+        seg7_display_season(winter_on);
         // do not exit to main screen, wait for timeout
         break;
     }
@@ -762,7 +744,8 @@ void read_sensors_bank1() {
 float read_batt_voltage(int pin) {
   int raw = analogRead(pin);
   int value = round(((raw * ANALOG_UNIT) / VOLTAGE_DIVIDER) * 10.0);
-  return value / 10.0;
+  // return value / 10.0;
+  return 15.8;
 }
 
 float read_temperature(int pin) {
@@ -865,106 +848,73 @@ void beep_turn_off() {
   beep_silence_t = loop_t;
 }
 
-void seg7_init() {
-  // seg7_display.begin();
+void seg7_display_init() {
+  seg7_display.begin();
   Serial.println("7seg initialized");
 }
 
-void seg7_set_brightness(byte value) {
-  // seg7_display.setBacklight(100);
+void seg7_display_brightness(byte value) {
+  seg7_display.setBacklight(value);
   seg7_brightness = value;
-  Serial.print("7seg brightness set to: ");
-  Serial.println(value);
 }
 
-void seg7_set_text(char text[6]) {
+void seg7_display_text(String text) {
+  seg7_display.print(text);
   Serial.println(text);
 }
 
-void seg7_set_voltage(float value) {
-  int i = (int)value;
-  int j = (int)(value * 10) % 10;
-  (i / 10 == 0)? seg7_text[0] = ' ' : seg7_text[0] = (char)(48 + i / 10);
-  seg7_text[1] = (char)(48 + i % 10);
-  seg7_text[2] = (char)(48+j);
-  seg7_text[3] = 'u';
-  seg7_text[4] = '.';
-  seg7_set_text(seg7_text);
+void seg7_display_voltage() {
+  seg7_text = String((int)(batt_voltage)) + String((int)(batt_voltage * 10) % 10) + "u";
+  seg7_display_colon(true);
+  seg7_display_text(seg7_text);
 }
 
-void seg7_set_temperature(int value) {
-  (value < 0)? seg7_text[0] = '-' : seg7_text[0] = ' ';
-  (value / 10 == 0)? seg7_text[1] = ' ' : seg7_text[1] = (char)(48 + value / 10);
-  seg7_text[2] = (char)(48 + value % 10);
-  seg7_text[3] = 'C';
-  seg7_text[4] = ' ';
-  seg7_set_text(seg7_text);
+void seg7_display_temperature(float temperature) {
+  seg7_text = String(temperature<0? "-":" ") + String((int)temperature/10==0? "0":"") + String(abs((int)temperature)) + "C";
+  seg7_display_colon(false);
+  seg7_display_text(seg7_text);
 }
 
-void seg7_set_season(bool value) {
-  if (value) {
-    seg7_text[0] = 'H';
-    seg7_text[1] = 'e';
-    seg7_text[2] = 'o';
-    seg7_text[3] = 'n';
-    seg7_text[4] = ':';
-  } else {
-    seg7_text[0] = 'H';
-    seg7_text[1] = 'e';
-    seg7_text[2] = 'n';
-    seg7_text[3] = 'o';
-    seg7_text[4] = ':';
-  }
-  seg7_set_text(seg7_text);
+void seg7_display_season(bool winter) {
+  (winter) ? seg7_text = "HEon" : seg7_text = "HEno";
+  seg7_display_colon(true);
+  seg7_display_text(seg7_text);
 }
 
-void seg7_set_stationary(bool value) {
-  if (value) {
-    seg7_text[0] = 'S';
-    seg7_text[1] = 't';
-    seg7_text[2] = 'o';
-    seg7_text[3] = 'n';
-    seg7_text[4] = ':';
-  } else {
-    seg7_text[0] = 'S';
-    seg7_text[1] = 't';
-    seg7_text[2] = 'n';
-    seg7_text[3] = 'o';
-    seg7_text[4] = ':';
-  }
-  seg7_set_text(seg7_text);
+void seg7_display_stationary() {
+  (stationary_mode_on) ? seg7_text = "Ston" : seg7_text = "Stno";
+  seg7_display_colon(true);
+  seg7_display_text(seg7_text);
 }
 
-void seg7_set_running() {
-  int minutes, i, j, k;
+void seg7_display_runmode() {
+  int minutes = 0;
+  char mode_char;
   if (manual_mode_on) {
-    seg7_text[0] = 'A';
     if (winter_on) {
       minutes = (manual_mode_t + WINTER_MODE_RUNTIMEMS - loop_t) / 60000UL;
     } else {
       minutes = (manual_mode_t + SUMMER_MODE_RUNTIMEMS - loop_t) / 60000UL;
     }
+    mode_char = 'A';
   } else if (remote_mode_on) {
-    seg7_text[0] = 't';
+    mode_char = 't';
     minutes = (remote_mode_t + REMOTE_MODE_RUNTIMEMS - loop_t) / 60000UL;
   } else if (engine_mode_on) {
-    seg7_text[0] = 'E';
+    mode_char = 'E';
     minutes = (loop_t - heater_t) / 60000UL;
   } else if (stationary_mode_on) {
-    seg7_text[0] = 'S';
+    mode_char = 'S';
     minutes = (remote_mode_t + STATIONARY_MODE_RUNTIMEMS - loop_t) / 60000UL;
+  } else {
+    mode_char = ' ';
   }
   if (minutes > 999) { minutes = 999; }
-  minutes = 123;
+  seg7_text = String(mode_char) + String(minutes<100? " ":"") + String(minutes<10? " ":"") + String(minutes);
+  seg7_display_colon(false);
+  seg7_display_text(seg7_text);
+}
 
-  seg7_text[3] = (char)(48 + minutes % 10);
-  if (minutes / 10 > 10) {
-    seg7_text[1] = (char)(48 + minutes / 100);
-    seg7_text[2] = (char)(48 + ((minutes / 10) % 10));
-  } else {
-    seg7_text[1] = ' ';
-    seg7_text[2] = (char)(48 + minutes / 10);
-  }
-  seg7_text[4] = ' ';
-  seg7_set_text(seg7_text);
+void seg7_display_colon(bool colon) {
+  seg7_display.setColonOn(colon);
 }
