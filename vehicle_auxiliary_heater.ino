@@ -25,20 +25,20 @@
 /* ToDo:
     fuel consumption statistics
     monitor fp only if heater on
-    remove ignition from interrupt and use dpdt relay for blower
     custom characters for lcd/blink (?)
     433MHz remote actions
     real time clock - schedules
     lcd backlight 10 seconds timeout
+    interrupt on everything that can work this way - ign, buttons
 */
 
 #define FPFEED_PIN 2 // heater fuel pump feedback pin (interrupt)
+#define BUTTON1_PIN 2 // main button (interrupt)
 #define R433MHZ_PIN 3 // 433MHz receiver pin (interrupt)
-#define BUTTON1_PIN 4 // main button
+#define IGNSWITCH_PIN 3 // ignition switch on (interrupt)
 #define BUZZER_PIN 5 // buzzer
 #define TM1637_CLK_PIN 6 // 4x7segment led display
 #define TM1637_DIO_PIN 7 // 4x7segment led display
-#define IGNSWITCH_PIN 8 // ignition switch on
 #define BLOWER_PWM_PIN 9 // blower pwm module pin
 #define TEMPERATURE_PIN 10 // temperature sensors
 
@@ -56,7 +56,7 @@
 
 #define BUTTON_SHORTMS 15UL // minimum time for a button to be registered
 #define BUTTON_LONGMS 500UL // long button press (at least 0.5 seconds)
-#define BUTTON_POWERMS 2000UL // Power on/off (at least 2 seconds)
+#define BUTTON_POWERMS 1000UL // Power on/off (at least 2 seconds)
 #define BUTTON_MFMS 5000UL // button malfunction
 
 // Production board settings
@@ -87,7 +87,7 @@
   #define HEATER_BEEP_INTERVALMS 2000UL // beep every minute for heater on (60000UL)
   #define FPFEED_TIMEOUTMS 1000UL // burner is off is fuel pump is off for at least one second
   #define WARNING_BEEP_INTERVALMS 3000UL // beep every 23 seconds for warnings (23000UL)
-  #define LOOP_REPORT_INTERVALMS 10000UL // report average loop performance every minute (60000UL)
+  #define LOOP_REPORT_INTERVALMS 1000UL // report average loop performance every minute (60000UL)
 // End production board settings
 
 #define BLOWER_PWM_WINTER 63 // in winter, run at 25% (100% = 255)
@@ -141,11 +141,12 @@ bool setup_mode = false;
 bool beep_on = false;
 bool warning_on = false;
 
-bool batt_voltage_input_changed = false;
-bool cabin_temperature_input_changed = false;
+bool batt_voltage_input_changed = true;
+bool cabin_temperature_input_changed = true;
 bool system_on = false;
 bool winter_on = false;
 bool cabin_temperature_reached = true; // temperature is reached at init (no command given)
+bool hvac_on = false;
 bool manual_mode_on = false;
 bool remote_mode_on = false;
 bool stationary_mode_on = false;
@@ -227,7 +228,9 @@ void setup() {
   seg7_init();
   seg7_set_brightness(seg7_brightness);
 
-  attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(BUTTON1_PIN), button1_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(IGNSWITCH_PIN), ignition_switch_interrupt, CHANGE);
 
   // set variables to default
   loop_times = 0UL;
@@ -243,12 +246,12 @@ void setup() {
   stationary_mode_t = 0UL; // runtime for stationary mode
   remote_mode_t = 0UL; // runtime for remote mode
   heater_beep_t = 0UL; // periodic beep for heater on
+  menu_t = 0UL; // timer for menu
 
   millis_t = millis();
 
   beep_t = millis_t; // timer for beep duration
   beep_silence_t = millis_t; // timer for silence duration
-  menu_t = millis_t; // timer for menu
   loop_t = millis_t; // timer for loop
   loop_report_t = millis_t; // periodic loop performance reporting
   system_warning_t = millis_t; // timer for system warnings
@@ -272,54 +275,18 @@ void loop() {
   // start a timer at loop start
   loop_t = millis();
 
-  // ignition switch actions
-  if ((ignition_switch_on() && !ignition_switch_active) || (!ignition_switch_on() && ignition_switch_active)) {
-    if (blower_on) { blower_turn_off(); }
-    if (heater_on) { heater_turn_off(); }
-    ignition_switch_active = !ignition_switch_active;
-    Serial.print("Ignition switch:");
-    Serial.println(ignition_switch_active);
-    batt_voltage_input_changed = true;
-    current_screen = 1;
-  }
-
-  // set current working mode
-  if (manual_mode_on) {
-    stationary_mode_on = false;
-    remote_mode_on = false;
-    engine_mode_on = false;
-  }
-  if (stationary_mode_on) {
-    manual_mode_on = false;
-    remote_mode_on = false;
-    engine_mode_on = false;
-  }
-  if (remote_mode_on) {
-    manual_mode_on = false;
-    stationary_mode_on = false;
-    engine_mode_on = false;
-  }
-  if (engine_mode_on) {
-    manual_mode_on = false;
-    stationary_mode_on = false;
-    remote_mode_on = false;
-  }
-
   // sensor bank1 polling
-  if (loop_t - sensors_bank1_t > POLLINGMS1) {
+  if (loop_t - sensors_bank1_t > POLLINGMS1 || loop_t < POLLINGMS1) {
     read_sensors_bank1();
     sensors_bank1_t = millis();
   }
 
   // triggers for warnings and malfunctions
   if (batt_voltage < BATT_MIN_VOLTAGE) {
-    if (system_on) {
-      system_turn_off();
-    } else {
-      if (!warning_on) {
-        Serial.println("Warning: LOW battery voltage!");
-        warning_on = true;
-      }
+    if (system_on) { system_turn_off(); }
+    if (!warning_on) {
+      Serial.println("Warning: LOW battery voltage!");
+      warning_on = true;
     }
   }
 
@@ -336,22 +303,31 @@ void loop() {
   }
 
   // restore screen if inactive
-  if (loop_t - button1_t > MENU_TIMEOUTMS && current_screen != 1) {
-    current_screen = 1;
-    setup_mode = false;
+  if (loop_t - menu_t > MENU_TIMEOUTMS || loop_t < MENU_TIMEOUTMS) {
+    if (current_screen != 1) {
+      current_screen = 1;
+      setup_mode = false;
+    } else {
+      if (batt_voltage_input_changed) {
+        seg7_set_text((((int)batt_voltage > 0)? "" : "0") + String((int)batt_voltage) + String(((int)(batt_voltage * 10)) % 10) + "0");
+      }
+    }
   }
 
-  // get button active duration
-  if (button1_pressed()) {
-    if (!button1_active) {
-      button1_active = true;
-      button1_t = loop_t;
+  if (batt_voltage_input_changed) {
+    if (batt_voltage > CHARGING_MIN_VOLTAGE && ignition_switch_active) {
+      if (!engine_running) {
+        Serial.println("Engine is running");
+        engine_running = true;
+        engine_t = loop_t;
+      }
+    } else {
+      if (engine_running) {
+        Serial.println("Engine is stopped");
+        engine_running = false;
+      }
     }
-  } else {
-    if (button1_active) {
-      button1_td = loop_t - button1_t;
-      button1_active = false;
-    }
+    batt_voltage_input_changed = false;
   }
 
   // different actions for button press short, long and very long
@@ -379,20 +355,9 @@ void loop() {
     button1_td = 0UL;
   }
 
-  if (batt_voltage_input_changed) {
-    if (batt_voltage > CHARGING_MIN_VOLTAGE && ignition_switch_active) {
-      if (!engine_running) {
-        Serial.println("Engine is running");
-        engine_running = true;
-        engine_t = loop_t;
-      }
-    } else {
-      if (engine_running) {
-        Serial.println("Engine is stopped");
-        engine_running = false;
-      }
-    }
-    batt_voltage_input_changed = false;
+  // 7segment display
+  if (manual_mode_on || remote_mode_on || stationary_mode_on || engine_mode_on) {
+    // blink something here?
   }
 
   if (system_on) {
@@ -408,24 +373,32 @@ void loop() {
     }
 
     if (winter_on) { // winter is here
-      if (engine_running && !engine_mode_on) {
+
+      // engine mode works only in winter
+      if (engine_running && !engine_mode_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) {
         engine_mode_on = true;
+        manual_mode_on = false;
+        stationary_mode_on = false;
+        remote_mode_on = false;
         fuel_consumption_run_ml = 0;
+      } else if (engine_mode_on) {
+        engine_mode_on = false;
       }
+
       if (engine_mode_on) {
         if (!p1_on) { pump1_turn_on(); }
         if (p2_on) { pump2_turn_off(); }
-        if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
+        if (!heater_on) { heater_turn_on(); }
       } else if (manual_mode_on || remote_mode_on) {
         if (!p1_on) { pump1_turn_on(); }
         if (p2_on) { pump2_turn_off(); }
-        if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
+        if (!heater_on) { heater_turn_on(); }
         if (!blower_on || blower_pwm != BLOWER_PWM_WINTER ) { blower_turn_on(BLOWER_PWM_WINTER); }
       } else if (stationary_mode_on) {
         if (p1_on) { pump1_turn_off(); }
         if (!cabin_temperature_reached) {
           if (!p2_on) { pump2_turn_on(); }
-          if (!heater_on && fuel_consumption_run_ml < FUEL_USAGE_MAX_ML) { heater_turn_on(); }
+          if (!heater_on) { heater_turn_on(); }
           if (!blower_on || blower_pwm != BLOWER_PWM_CAMPING) { blower_turn_on(BLOWER_PWM_CAMPING); }
         } else {
           if (heater_on) { heater_turn_off(); }
@@ -451,25 +424,30 @@ void loop() {
 
     // runtime will complete no matter the season
     if (winter_on) {
-      if (manual_mode_on && loop_t - manual_mode_t > WINTER_MODE_RUNTIMEMS) {
+      if ((manual_mode_on && loop_t - manual_mode_t > WINTER_MODE_RUNTIMEMS) || fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML) {
         Serial.println("Runtime reached for manual mode (winter)");
         manual_mode_on = false;
       }
     } else {
-      if (manual_mode_on && loop_t - manual_mode_t > SUMMER_MODE_RUNTIMEMS) {
+      if ((manual_mode_on && loop_t - manual_mode_t > SUMMER_MODE_RUNTIMEMS) || fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML) {
         Serial.println("Runtime reached for manual mode (summer)");
         manual_mode_on = false;
       }
     }
 
-    if (stationary_mode_on && loop_t - stationary_mode_t > STATIONARY_MODE_RUNTIMEMS) {
+    if ((stationary_mode_on && loop_t - stationary_mode_t > STATIONARY_MODE_RUNTIMEMS) || fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML) {
       Serial.println("Runtime reached for stationary mode");
       stationary_mode_on = false;
     }
 
-    if (remote_mode_on && loop_t - remote_mode_t > REMOTE_MODE_RUNTIMEMS) {
+    if ((remote_mode_on && loop_t - remote_mode_t > REMOTE_MODE_RUNTIMEMS) || fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML) {
       Serial.println("Runtime reached for remote mode");
       remote_mode_on = false;
+    }
+
+    if (engine_mode_on && fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML) {
+      Serial.println("Runtime reached for engine mode");
+      engine_mode_on = false;
     }
 
     /* beep every minute if heater on
@@ -484,24 +462,16 @@ void loop() {
     if (!heater_on && winter_on && loop_t - blower_t > BLOWER_PWM_TIMEOUTMS) {
       if (blower_on) { blower_turn_off(); }
     }
-  }
 
-  // stop heater if max. fuel consumption value is reached
-  if (fuel_consumption_run_ml >= FUEL_USAGE_MAX_ML && heater_on) {
-    heater_turn_off(); // blower stops automatically on timer
-    Serial.println("Heater stopped due to max fuel usage");
-  }
-  // pumps will run for a while on heater stop even after off command
-  if (!heater_on && (p1_on || p2_on) && loop_t - pump_t > PUMP_TIMEOUTMS) {
-    if (p1_on) { pump1_turn_off(); }
-    if (p2_on) { pump2_turn_off(); }
+    // pumps will run for a while on heater stop even after off command
+    if (!heater_on && (p1_on || p2_on) && loop_t - pump_t > PUMP_TIMEOUTMS) {
+      if (p1_on) { pump1_turn_off(); }
+      if (p2_on) { pump2_turn_off(); }
+    }
+
   } else {
+    // system is off
     if (seg7_brightness != SEG7_BRIGHTNESS_LOW) { seg7_set_brightness(SEG7_BRIGHTNESS_LOW); }
-  }
-
-  // stop heater if engine mode is off
-  if (!engine_running && engine_mode_on) {
-    engine_mode_on = false;
   }
 
   // manage beeps
@@ -524,7 +494,7 @@ void loop() {
   if (loop_t - loop_report_t > LOOP_REPORT_INTERVALMS) {
     // loop report resets with the data before the current loop
     loop_avg_ms = (loop_t - loop_report_t)/(loop_times - 1.0);
-    Serial.print("Loop performance:");
+    Serial.print("Loop performance: ");
     Serial.println(loop_avg_ms,2);
     loop_report_t = loop_t;
     loop_times = 0;
@@ -540,8 +510,22 @@ void button1_short_press() {
       current_screen ++;
       beep_action(BEEP_SHORT_DURATIONMS, 1, BEEP_FREQ_OK);
     }
-    Serial.print("New current screen:");
+    Serial.print("New current screen: ");
     Serial.println(current_screen);
+    switch (current_screen) {
+      case 1:
+        seg7_set_text((((int)batt_voltage > 0)? "" : "0") + String((int)batt_voltage) + String(((int)(batt_voltage * 10)) % 10) + "0");
+        break;
+      case 2:
+        seg7_set_text("He" + String(stationary_mode_on ? "on" : "of"));
+        break;
+      case 3:
+        seg7_set_text(String((int)expected_cabin_temperature) + "C");
+        break;
+      case 4:
+        seg7_set_text("SE" + String(winter_on ? "Cd" : "Ho"));
+        break;
+    }
   } else {
     switch (current_screen) {
       case 3:
@@ -554,8 +538,9 @@ void button1_short_press() {
           beep_action(BEEP_SHORT_DURATIONMS, 1, BEEP_FREQ_OK);
 
         }
-        Serial.print("setup_mode_cabin_temperature:");
+        Serial.print("setup_mode_cabin_temperature: ");
         Serial.println(setup_mode_cabin_temperature);
+        seg7_set_text(String((int)setup_mode_cabin_temperature) + "C");
         break;
       case 4:
         // switch between summer and winter modes
@@ -566,8 +551,9 @@ void button1_short_press() {
           setup_mode_winter_on = false;
           beep_action(BEEP_SHORT_DURATIONMS, 1, BEEP_FREQ_OK);
         }
-        Serial.print("setup_mode_winter_on:");
+        Serial.print("setup_mode_winter_on: ");
         Serial.println(setup_mode_winter_on);
+        seg7_set_text("SE" + String(winter_on ? "Cd" : "Ho"));
         break;
     }
   }
@@ -588,10 +574,13 @@ void button1_long_press() {
           } else {
             beep_action(BEEP_SET_DURATIONMS, BEEP_SET_TIMES, BEEP_FREQ_OK);
             manual_mode_on = true;
+            remote_mode_on = false;
+            stationary_mode_on = false;
+            engine_mode_on = false;
             manual_mode_t = loop_t;
             fuel_consumption_run_ml = 0;
           }
-          Serial.print("manual_mode_on:");
+          Serial.print("manual_mode_on: ");
           Serial.println(manual_mode_on);
         } else {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
@@ -606,10 +595,13 @@ void button1_long_press() {
           } else {
             beep_action(BEEP_SET_DURATIONMS, BEEP_SET_TIMES, BEEP_FREQ_OK);
             stationary_mode_on = true;
+            manual_mode_on = false;
+            remote_mode_on = false;
+            engine_mode_on = false;
             stationary_mode_t = loop_t;
             fuel_consumption_run_ml = 0;
           }
-          Serial.print("stationary_mode_on:");
+          Serial.print("stationary_mode_on: ");
           Serial.println(stationary_mode_on);
         } else {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
@@ -638,9 +630,9 @@ void button1_long_press() {
         } else {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
         }
-        Serial.print("Expected degrees:");
+        Serial.print("Expected degrees: ");
         Serial.println(expected_cabin_temperature);
-        Serial.print("Exiting setup mode for screen:");
+        Serial.print("Exiting setup mode for screen: ");
         Serial.println(current_screen);
         setup_mode = false;
         // do not exit to main screen, wait for timeout
@@ -654,9 +646,9 @@ void button1_long_press() {
         } else {
           beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
         }
-        Serial.print("Current season:");
+        Serial.print("Current season: ");
         Serial.println(winter_on);
-        Serial.print("Exiting setup mode for screen:");
+        Serial.print("Exiting setup mode for screen: ");
         Serial.println(current_screen);
         setup_mode = false;
         // do not exit to main screen, wait for timeout
@@ -665,7 +657,7 @@ void button1_long_press() {
   }
 }
 
-void fpfeed_switch() {
+void fpfeed_switch_interrupt() {
   if (digitalRead(FPFEED_PIN)) { // high = no feed
     fpfeed_on = false;
   } else {
@@ -676,14 +668,30 @@ void fpfeed_switch() {
   }
 }
 
-bool ignition_switch_on() {
-  return !digitalRead(IGNSWITCH_PIN);
+void ignition_switch_interrupt() {
+  (digitalRead(IGNSWITCH_PIN)) ? ignition_switch_active = false : ignition_switch_active = true;
+  if (blower_on) { blower_turn_off(); }
+  if (heater_on) { heater_turn_off(); }
+  Serial.print("Ignition switch: ");
+  Serial.println(ignition_switch_active);
+  batt_voltage_input_changed = true;
+  current_screen = 1;
 }
 
-bool button1_pressed() {
-  return !digitalRead(BUTTON1_PIN);
+void button1_interrupt() {
+  // get button active duration
+  if (!digitalRead(BUTTON1_PIN)) {
+    if (!button1_active) {
+      button1_active = true;
+      button1_t = loop_t;
+    }
+  } else {
+    if (button1_active) {
+      button1_td = loop_t - button1_t;
+      button1_active = false;
+    }
+  }
 }
-
 void read_sensors_bank1() {
   float value = 0.0;
   // read battery voltage
@@ -697,6 +705,7 @@ void read_sensors_bank1() {
   if (value != cabin_temperature) {
     cabin_temperature_input_changed = true;
     cabin_temperature = value;
+    Serial.print("Cabin temperature: ");
     Serial.println(cabin_temperature,2);
   }
 }
@@ -752,7 +761,7 @@ void heater_turn_off() {
 
 void blower_turn_on(byte pwm) {
   digitalWrite(BLOWER_PWM_PIN, pwm);
-  Serial.print("Blower turned on:");
+  Serial.print("Blower turned on: ");
   Serial.println(pwm);
   blower_on = true;
   blower_pwm = pwm;
@@ -819,6 +828,6 @@ void seg7_set_brightness(byte value) {
   Serial.println(value);
 }
 
-void seg7_print(char* text) {
+void seg7_set_text(String text) {
   Serial.println(text);
 }
