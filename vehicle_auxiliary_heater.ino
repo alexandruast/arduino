@@ -49,6 +49,43 @@
 #define SDA_PIN A4 // serial devices - rtc, i2c display
 #define SCL_PIN A5 // serial devices - rtc, i2c display
 
+#define TM1637_I2C_COMM1 0x40
+#define TM1637_I2C_COMM2 0xC0
+#define TM1637_I2C_COMM3 0x80
+
+#define SEG_A 0b00000001
+#define SEG_B 0b00000010
+#define SEG_C 0b00000100
+#define SEG_D 0b00001000
+#define SEG_E 0b00010000
+#define SEG_F 0b00100000
+#define SEG_G 0b01000000
+
+const uint8_t SEG7_0 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
+const uint8_t SEG7_1 = SEG_B | SEG_C;
+const uint8_t SEG7_2 = SEG_A | SEG_B | SEG_D | SEG_E | SEG_G;
+const uint8_t SEG7_3 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_G;
+const uint8_t SEG7_4 = SEG_B | SEG_C | SEG_F | SEG_G;
+const uint8_t SEG7_5 = SEG_A | SEG_C | SEG_D | SEG_F | SEG_G;
+const uint8_t SEG7_6 = SEG_A | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_7 = SEG_A | SEG_B | SEG_C;
+const uint8_t SEG7_8 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_9 = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_G;
+const uint8_t SEG7_A = SEG_A | SEG_B | SEG_C | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_b = SEG_C | SEG_D | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_C = SEG_A | SEG_D | SEG_E | SEG_F;
+const uint8_t SEG7_d = SEG_B | SEG_C | SEG_D | SEG_E | SEG_G;
+const uint8_t SEG7_E = SEG_A | SEG_D | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_F = SEG_A | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_H = SEG_B | SEG_C | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_L = SEG_D | SEG_E | SEG_F;
+const uint8_t SEG7_n = SEG_C | SEG_E | SEG_G;
+const uint8_t SEG7_o = SEG_C | SEG_D | SEG_E | SEG_G;
+const uint8_t SEG7_P = SEG_A | SEG_B | SEG_E | SEG_F | SEG_G;
+const uint8_t SEG7_U = SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
+const uint8_t SEG7_deg = SEG_B | SEG_C | SEG_D | SEG_E | SEG_F;
+const uint8_t SEG7_empty = 0x00;
+
 #define VOLTAGE 5.0
 #define TEMP_CORRECTION 0.5
 #define R1 30000.0
@@ -141,7 +178,7 @@ bool setup_mode = false;
 bool beep_on = false;
 bool warning_on = false;
 
-bool batt_voltage_input_changed = true;
+bool batt_voltage_input_changed = false;
 bool cabin_temperature_input_changed = true;
 bool system_on = false;
 bool winter_on = false;
@@ -164,9 +201,10 @@ bool p2_on = false;
    4 - season
 */
 const byte screens = 4;
-byte current_screen = 1;
+byte current_screen = 0;
 
-byte seg7_brightness = SEG7_BRIGHTNESS_LOW;
+byte seg7_brightness = 0;
+char seg7_text[6] = { '8', '8', '8', '8', ':', '\0' };
 
 unsigned int beep_duration = 0;
 unsigned int beep_freq = 0;
@@ -180,8 +218,9 @@ unsigned long loop_times, millis_t, boot_t, loop_t, loop_report_t, system_warnin
 unsigned long sensors_bank1_t, sensors_bank2_t, button1_t, button1_td, menu_t;
 unsigned long heater_t, fpfeed_t, pump_t, blower_t, manual_mode_t, engine_t, stationary_mode_t, remote_mode_t;
 unsigned long beep_t, beep_silence_t, heater_beep_t;
+
 byte expected_cabin_temperature, setup_mode_cabin_temperature;
-bool setup_mode_winter_on;
+bool setup_mode_winter_on = false;
 
 // analog adjustment stuff
 const float ANALOG_UNIT = VOLTAGE / 1024;
@@ -225,16 +264,12 @@ void setup() {
 
   pinMode(BLOWER_PWM_PIN, OUTPUT);
 
-  seg7_init();
-  seg7_set_brightness(seg7_brightness);
-
   // attachInterrupt(digitalPinToInterrupt(FPFEED_PIN), fpfeed_switch_interrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON1_PIN), button1_interrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(IGNSWITCH_PIN), ignition_switch_interrupt, CHANGE);
 
   // set variables to default
   loop_times = 0UL;
-  button1_active = false;
   button1_t = 0UL; // timer for button1
   button1_td = 0UL; // time delta for button1
   sensors_bank1_t = 0UL; // timer for sensors polling
@@ -269,6 +304,11 @@ void setup() {
 
   // system start confirmation beep
   beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
+
+  // initialization
+  read_sensors_bank1();
+  current_screen = 0;
+  batt_voltage_input_changed = true;
 }
 
 void loop() {
@@ -276,7 +316,7 @@ void loop() {
   loop_t = millis();
 
   // sensor bank1 polling
-  if (loop_t - sensors_bank1_t > POLLINGMS1 || loop_t < POLLINGMS1) {
+  if (loop_t - sensors_bank1_t > POLLINGMS1) {
     read_sensors_bank1();
     sensors_bank1_t = millis();
   }
@@ -303,14 +343,11 @@ void loop() {
   }
 
   // restore screen if inactive
-  if (loop_t - menu_t > MENU_TIMEOUTMS || loop_t < MENU_TIMEOUTMS) {
-    if (current_screen != 1) {
-      current_screen = 1;
+  if (loop_t - menu_t > MENU_TIMEOUTMS) {
+    if (current_screen != 0) {
+      current_screen = 0;
+      seg7_set_voltage(batt_voltage);
       setup_mode = false;
-    } else {
-      if (batt_voltage_input_changed) {
-        seg7_set_text((((int)batt_voltage > 0)? "" : "0") + String((int)batt_voltage) + String(((int)(batt_voltage * 10)) % 10) + "0");
-      }
     }
   }
 
@@ -326,6 +363,9 @@ void loop() {
         Serial.println("Engine is stopped");
         engine_running = false;
       }
+    }
+    if (current_screen == 0) {
+      seg7_set_voltage(batt_voltage);
     }
     batt_voltage_input_changed = false;
   }
@@ -344,7 +384,7 @@ void loop() {
     // power on or off
     if (button1_td >= BUTTON_POWERMS && button1_td  < BUTTON_MFMS) {
       setup_mode = false;
-      current_screen = 1;
+      current_screen = 0;
       (system_on) ? system_turn_off() : system_turn_on();
     }
     if (button1_td >= BUTTON_MFMS) {
@@ -361,7 +401,10 @@ void loop() {
   }
 
   if (system_on) {
-    if (seg7_brightness != SEG7_BRIGHTNESS_HIGH) { seg7_set_brightness(SEG7_BRIGHTNESS_HIGH); }
+    if (seg7_brightness != SEG7_BRIGHTNESS_HIGH) {
+      seg7_brightness = SEG7_BRIGHTNESS_HIGH;
+      seg7_set_brightness(seg7_brightness);
+    }
     // when temperature changes, re-evaluate conditions
     if (cabin_temperature_input_changed) {
       if (winter_on) {
@@ -471,7 +514,10 @@ void loop() {
 
   } else {
     // system is off
-    if (seg7_brightness != SEG7_BRIGHTNESS_LOW) { seg7_set_brightness(SEG7_BRIGHTNESS_LOW); }
+    if (seg7_brightness != SEG7_BRIGHTNESS_LOW) {
+      seg7_brightness = SEG7_BRIGHTNESS_LOW;
+      seg7_set_brightness(seg7_brightness);
+    }
   }
 
   // manage beeps
@@ -504,7 +550,7 @@ void loop() {
 void button1_short_press() {
   if (!setup_mode) {
     if (current_screen == screens) {
-      current_screen = 1;
+      current_screen = 0;
       beep_action(BEEP_SHORT_DURATIONMS, 2, BEEP_FREQ_OK);
     } else {
       current_screen ++;
@@ -513,17 +559,19 @@ void button1_short_press() {
     Serial.print("New current screen: ");
     Serial.println(current_screen);
     switch (current_screen) {
+      case 0:
+          seg7_set_voltage(batt_voltage);
       case 1:
-        seg7_set_text((((int)batt_voltage > 0)? "" : "0") + String((int)batt_voltage) + String(((int)(batt_voltage * 10)) % 10) + "0");
+          seg7_set_running();
         break;
       case 2:
-        seg7_set_text("He" + String(stationary_mode_on ? "on" : "of"));
+          seg7_set_stationary(stationary_mode_on);
         break;
       case 3:
-        seg7_set_text(String((int)expected_cabin_temperature) + "C");
+          seg7_set_temperature(cabin_temperature);
         break;
       case 4:
-        seg7_set_text("SE" + String(winter_on ? "Cd" : "Ho"));
+          seg7_set_season(winter_on);
         break;
     }
   } else {
@@ -540,7 +588,6 @@ void button1_short_press() {
         }
         Serial.print("setup_mode_cabin_temperature: ");
         Serial.println(setup_mode_cabin_temperature);
-        seg7_set_text(String((int)setup_mode_cabin_temperature) + "C");
         break;
       case 4:
         // switch between summer and winter modes
@@ -553,7 +600,6 @@ void button1_short_press() {
         }
         Serial.print("setup_mode_winter_on: ");
         Serial.println(setup_mode_winter_on);
-        seg7_set_text("SE" + String(winter_on ? "Cd" : "Ho"));
         break;
     }
   }
@@ -563,6 +609,9 @@ void button1_long_press() {
   if (!setup_mode) {
     setup_mode = true;
     switch (current_screen) {
+      case 0:
+        beep_action(BEEP_SET_DURATIONMS, BEEP_UNAVAILABLE_TIMES, BEEP_FREQ_NOK);
+        break;
       case 1:
         if (engine_running && engine_mode_on) {
           beep_action(BEEP_LONG_DURATIONMS, 1, BEEP_FREQ_OK);
@@ -675,7 +724,7 @@ void ignition_switch_interrupt() {
   Serial.print("Ignition switch: ");
   Serial.println(ignition_switch_active);
   batt_voltage_input_changed = true;
-  current_screen = 1;
+  current_screen = 0;
 }
 
 void button1_interrupt() {
@@ -824,10 +873,98 @@ void seg7_init() {
 void seg7_set_brightness(byte value) {
   // seg7_display.setBacklight(100);
   seg7_brightness = value;
-  Serial.print("7seg brightness set to ");
+  Serial.print("7seg brightness set to: ");
   Serial.println(value);
 }
 
-void seg7_set_text(String text) {
+void seg7_set_text(char text[6]) {
   Serial.println(text);
+}
+
+void seg7_set_voltage(float value) {
+  int i = (int)value;
+  int j = (int)(value * 10) % 10;
+  (i / 10 == 0)? seg7_text[0] = ' ' : seg7_text[0] = (char)(48 + i / 10);
+  seg7_text[1] = (char)(48 + i % 10);
+  seg7_text[2] = (char)(48+j);
+  seg7_text[3] = 'u';
+  seg7_text[4] = '.';
+  seg7_set_text(seg7_text);
+}
+
+void seg7_set_temperature(int value) {
+  (value < 0)? seg7_text[0] = '-' : seg7_text[0] = ' ';
+  (value / 10 == 0)? seg7_text[1] = ' ' : seg7_text[1] = (char)(48 + value / 10);
+  seg7_text[2] = (char)(48 + value % 10);
+  seg7_text[3] = 'C';
+  seg7_text[4] = ' ';
+  seg7_set_text(seg7_text);
+}
+
+void seg7_set_season(bool value) {
+  if (value) {
+    seg7_text[0] = 'H';
+    seg7_text[1] = 'e';
+    seg7_text[2] = 'o';
+    seg7_text[3] = 'n';
+    seg7_text[4] = ':';
+  } else {
+    seg7_text[0] = 'H';
+    seg7_text[1] = 'e';
+    seg7_text[2] = 'n';
+    seg7_text[3] = 'o';
+    seg7_text[4] = ':';
+  }
+  seg7_set_text(seg7_text);
+}
+
+void seg7_set_stationary(bool value) {
+  if (value) {
+    seg7_text[0] = 'S';
+    seg7_text[1] = 't';
+    seg7_text[2] = 'o';
+    seg7_text[3] = 'n';
+    seg7_text[4] = ':';
+  } else {
+    seg7_text[0] = 'S';
+    seg7_text[1] = 't';
+    seg7_text[2] = 'n';
+    seg7_text[3] = 'o';
+    seg7_text[4] = ':';
+  }
+  seg7_set_text(seg7_text);
+}
+
+void seg7_set_running() {
+  int minutes, i, j, k;
+  if (manual_mode_on) {
+    seg7_text[0] = 'A';
+    if (winter_on) {
+      minutes = (manual_mode_t + WINTER_MODE_RUNTIMEMS - loop_t) / 60000UL;
+    } else {
+      minutes = (manual_mode_t + SUMMER_MODE_RUNTIMEMS - loop_t) / 60000UL;
+    }
+  } else if (remote_mode_on) {
+    seg7_text[0] = 't';
+    minutes = (remote_mode_t + REMOTE_MODE_RUNTIMEMS - loop_t) / 60000UL;
+  } else if (engine_mode_on) {
+    seg7_text[0] = 'E';
+    minutes = (loop_t - heater_t) / 60000UL;
+  } else if (stationary_mode_on) {
+    seg7_text[0] = 'S';
+    minutes = (remote_mode_t + STATIONARY_MODE_RUNTIMEMS - loop_t) / 60000UL;
+  }
+  if (minutes > 999) { minutes = 999; }
+  minutes = 123;
+
+  seg7_text[3] = (char)(48 + minutes % 10);
+  if (minutes / 10 > 10) {
+    seg7_text[1] = (char)(48 + minutes / 100);
+    seg7_text[2] = (char)(48 + ((minutes / 10) % 10));
+  } else {
+    seg7_text[1] = ' ';
+    seg7_text[2] = (char)(48 + minutes / 10);
+  }
+  seg7_text[4] = ' ';
+  seg7_set_text(seg7_text);
 }
